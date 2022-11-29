@@ -174,6 +174,8 @@ class Player:
         self.goal_size = goal_size
         self.current_size = goal_size / 4
 
+        self.vertical_shift = 0
+
         # Class accessible percept variables, written at the start of each turn
         self.current_size: int = None
         self.amoeba_map: npt.NDArray = None
@@ -188,8 +190,13 @@ class Player:
         if size < 2:
             return formation.map
 
-        teeth_size = min((size // 3), 24) # new tooth for every 2 backbone
-        backbone_size = min((size - teeth_size), 49)
+        teeth_size = min((size // 6), 24) # new tooth for every 2 backbone
+        # remaining_cells = size - teeth_size
+        # divider = min((int(remaining_cells * 0.66)), 99)
+        # backbone_size = min((size - teeth_size - divider), 49)
+        backbone_size = min((teeth_size * 2), 49)
+        divider = min((size - teeth_size - backbone_size), 99)
+        
         cells_used = backbone_size + teeth_size
         
         # If we have hit our max size, form an additional comb and connect it via a bridge
@@ -197,42 +204,30 @@ class Player:
         #     formation.merge_formation(self.generate_comb_formation(size - cells_used - COMB_SEPARATION_DIST + 2, tooth_offset, center_x + COMB_SEPARATION_DIST, center_y))
         #     for i in range(center_x, center_x + COMB_SEPARATION_DIST):
         #         formation.add_cell(i, center_y)
+        if backbone_size == 49:
+            return formation.map
 
-        print("size: {}, backbone_size: {}, teeth_size: {}".format(size, backbone_size, teeth_size))
+
+
+        print("size: {}, backbone_size: {}, teeth_size: {}, divider_size: {}".format(size, backbone_size, teeth_size, divider))
 
         formation.add_cell(center_x, center_y)
-        # formation.add_cell(center_x - 1, center_y)
-        # formation.add_cell(center_x + 1, center_y)
-        # formation.add_cell(center_x, center_y - 1)
-        # formation.add_cell(center_x, center_y + 1)
 
-        # for i in range(1, round((backbone_size - 1) / 2 + 0.1) + 1):
-        for i in range(1, math.ceil((backbone_size - 1) / 4 ) + 1): # Adding the four backbones
-            # first layer of backbone
-            # formation.add_cell(center_x, center_y + i)
-            # formation.add_cell(center_x, center_y - i)
-            # # second layer of backbone
-            # formation.add_cell(center_x - 1, center_y + i)
-            # formation.add_cell(center_x - 1, center_y - i)
-
-            formation.add_cell(center_x - i, center_y)
-            formation.add_cell(center_x + i, center_y)
+        for i in range(1, divider // 2): # Adding the divider
             formation.add_cell(center_x, center_y - i)
             formation.add_cell(center_x, center_y + i)
+        
+        for i in range(1, math.ceil((backbone_size - 1) / 2 ) + 1): # Adding the two backbones
+            formation.add_cell(center_x - i, center_y - tooth_offset)
+            formation.add_cell(center_x + i, center_y + tooth_offset)
+            # formation.add_cell(center_x, center_y - i)
+            # formation.add_cell(center_x, center_y + i)
 
-        # for i in range(1, min(teeth_size // 4, (backbone_size - 1) // 4), 4): # Adding the teeth
-        for i in range(1, (teeth_size // 4) + 1): # Adding the teeth
-            # formation.add_cell(center_x + 1, center_y + tooth_offset + i)
-            # formation.add_cell(center_x + 1, center_y + tooth_offset - i)
-
-            # formation.add_cell(center_x + 1, center_y + tooth_offset + i)
-            # formation.add_cell(center_x - 1, center_y + tooth_offset - i)
-            # formation.add_cell(center_x + tooth_offset + i, center_y - 1)
-            # formation.add_cell(center_x + tooth_offset - 1, center_y + 1)
-            formation.add_cell(center_x + 1, center_y - (2 * i + tooth_offset))
-            formation.add_cell(center_x - 1, center_y + (2 * i + tooth_offset))
-            formation.add_cell(center_x + (2 * i + tooth_offset), center_y + 1)
-            formation.add_cell(center_x - (2 * i + tooth_offset), center_y - 1)
+        for i in range(1, (teeth_size // 2) + 1): # Adding the teeth
+            # formation.add_cell(center_x + (2 * i + tooth_offset), center_y + 1)
+            # formation.add_cell(center_x - (2 * i + tooth_offset), center_y - 1)
+            formation.add_cell(center_x + 2 * i, center_y + 1 + tooth_offset)
+            formation.add_cell(center_x - 2 * i, center_y - 1 - tooth_offset)
 
 
         # show_amoeba_map(formation.map)
@@ -430,23 +425,50 @@ class Player:
                 memory_fields = read_memory(info)
 
         if memory_fields[MemoryFields.Initialized]:
+            print("MOVING")
+            # curr_coords = map_to_coords(self.amoeba_map)
+            # curr_backbone_col = min(x for x, y in curr_coords if y == max(y for x, y in curr_coords))
+            
+            # right_edge_cells = [(x, y) for x, y in curr_coords if x == constants.map_dim - 1]
+            # left__edge_cells = [(x, y) for x, y in curr_coords if x == 0]
+            # if len(right_edge_cells) and len(left__edge_cells):
+            #    curr_backbone_col = min(x for x, _ in curr_coords if x > CENTER_X) 
+
+
+
             curr_coords = map_to_coords(self.amoeba_map)
-            curr_backbone_col = min(x for x, y in curr_coords if y == max(y for x, y in curr_coords))
+            curr_left_backbone = max(y for x, y in curr_coords if x < CENTER_X) # moving upward
+            curr_right_backbone = min(y for x, y in curr_coords if x > CENTER_X) # moving downward
+
+            left_top_cells = [(x, y) for x, y in curr_coords if x < CENTER_X and y == 0]
+            left_bottom_cells = [(x, y) for x, y in curr_coords if x < CENTER_X and y == constants.map_dim-1]
+            right_top_cells = [(x, y) for x, y in curr_coords if x > CENTER_X and y == 0]
+            right_bottom_cells = [(x, y) for x, y in curr_coords if x > CENTER_X and y == constants.map_dim-1]
+
             
-            right_edge_cells = [(x, y) for x, y in curr_coords if x == constants.map_dim - 1]
-            left__edge_cells = [(x, y) for x, y in curr_coords if x == 0]
-            if len(right_edge_cells) and len(left__edge_cells):
-               curr_backbone_col = min(x for x, _ in curr_coords if x > CENTER_X) 
+            if len(left_top_cells) and len(left_bottom_cells):
+               curr_left_backbone = max(y for x, y in curr_coords if x < CENTER_X) 
+            if len(right_top_cells) and len(right_bottom_cells):
+               curr_right_backbone = min(y for x, y in curr_coords if x > CENTER_X) 
+
+
             
-            vertical_shift = int(np.ceil(curr_backbone_col / 2) + 1) % 2
+            # vertical_shift = int(np.ceil(curr_backbone_col / 2) + 1) % 2
             if memory_fields[MemoryFields.Translating]:
-                offset = (curr_backbone_col + 1) - CENTER_X + 1
+                print("Translating")
+                offset = (curr_left_backbone + 1) - CENTER_Y + 1
+                self.vertical_shift += 1
                 info = change_memory_field(info, MemoryFields.Translating, False)
             else: 
-                offset = (curr_backbone_col + 1) - CENTER_X
+                print("Not Translating")
+                offset = (curr_left_backbone + 1) - CENTER_Y
+                # self.vertical_shift += 1
                 info = change_memory_field(info, MemoryFields.Translating, True)
 
-            next_comb = self.generate_comb_formation(self.current_size, vertical_shift, CENTER_X + offset, CENTER_Y)
+            # next_comb = self.generate_comb_formation(self.current_size, vertical_shift, CENTER_X + offset, CENTER_Y)
+            # retracts, moves = self.get_morph_moves(next_comb)
+            print("VERTICAL SHIFT: ", self.vertical_shift)
+            next_comb = self.generate_comb_formation(self.current_size, self.vertical_shift, CENTER_X, CENTER_Y)
             retracts, moves = self.get_morph_moves(next_comb)
 
 
