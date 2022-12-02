@@ -28,6 +28,9 @@ COMB_SEPARATION_DIST = 24
 # ---------------------------------------------------------------------------- #
 
 
+def wrap_coordinates(x, y):
+    return (x % constants.map_dim, y % constants.map_dim)
+
 def map_to_coords(amoeba_map: npt.NDArray) -> List[Tuple[int, int]]:
     return list(map(tuple, np.transpose(amoeba_map.nonzero()).tolist()))
 
@@ -71,6 +74,9 @@ class MemoryFields(Enum):
     Initialized = 0
     Translating = 1
 
+class Status(Enum):
+    Morphing = 0
+    Translating = 1
 
 def read_memory(memory: int) -> Dict[MemoryFields, bool]:
     out = {}
@@ -113,6 +119,19 @@ if __name__ == "__main__":
     assert fields[MemoryFields.Initialized] == False
     assert fields[MemoryFields.Translating] == False
 
+def encode_byte(x, status):
+    assert 0 <= x <= 100
+    bit_string = format(x, "07b")
+    if status == Status.Morphing:
+        return int(bit_string + "0", 2)
+    else:
+        return int(bit_string + "1", 2)
+
+def decode_byte(byte):
+    bit_string = format(byte, "08b")
+    x = int(bit_string[:7], 2)
+    status = Status.Morphing if bit_string[-1] == "0" else Status.Translating
+    return x, status
 
 
 # ---------------------------------------------------------------------------- #
@@ -365,6 +384,35 @@ class Player:
 
         return (amoeba == check).all()
 
+    # Adapted from Group 3's implementation
+    def gen_low_density_formation(self, size, center_x):
+        center_y = constants.map_dim // 2
+        formation = np.zeros((constants.map_dim, constants.map_dim), dtype=int)
+        offsets = {(0,0), (0,1), (0,-1), (1,1), (1,-1)}
+        total_cells = size - 5
+        i = 1
+        j = 2
+        while total_cells > 0:
+            if total_cells < 6:
+                if total_cells > 1:
+                    # If possible add evenly
+                    offsets.update({(i,j), (i,-j)})
+                    total_cells -= 2
+                    i += 1
+                else:
+                    # Add last remaining to left arm
+                    offsets.update({(i, j)})
+                    total_cells -= 1
+            else:
+                # if there are at least 6 add 3 to each side
+                offsets.update({(i, j), (i+1,j), (i+2, j), (i, -j), (i+1,-j), (i+2, -j)})
+                total_cells -= 6
+                i += 2
+                j += 1
+        for i, j in offsets:
+            formation[wrap_coordinates(center_x + i, center_y + j)] = 1
+        return formation
+
     def store_current_percept(self, current_percept: AmoebaState) -> None:
         self.current_size = current_percept.current_size
         self.amoeba_map = current_percept.amoeba_map
@@ -374,7 +422,6 @@ class Player:
         self.num_available_moves = int(
             np.ceil(self.metabolism * current_percept.current_size)
         )
-        #test
 
     def move(
         self, last_percept: AmoebaState, current_percept: AmoebaState, info: int
@@ -398,62 +445,41 @@ class Player:
         retracts = []
         moves = []
 
-        memory_fields = read_memory(info)
-        if not memory_fields[MemoryFields.Initialized]:
-            retracts, moves = self.get_morph_moves(
-                self.generate_comb_formation(self.current_size, 0)
-            )
+        x, status = decode_byte(info)
+        prev_center_x = max(constants.map_dim // 2, x)
+
+        if status == Status.Morphing:
+            formation = self.gen_low_density_formation(self.current_size, prev_center_x)
+            retracts, moves = self.get_morph_moves(formation)
             if len(moves) == 0:
-                info = change_memory_field(info, MemoryFields.Initialized, True)
-                info = change_memory_field(info, MemoryFields.Translating, True)
-                memory_fields = read_memory(info)
-
-        if memory_fields[MemoryFields.Initialized]:
-            print("MOVING")
-            # curr_coords = map_to_coords(self.amoeba_map)
-            # curr_backbone_col = min(x for x, y in curr_coords if y == max(y for x, y in curr_coords))
-            
-            # right_edge_cells = [(x, y) for x, y in curr_coords if x == constants.map_dim - 1]
-            # left__edge_cells = [(x, y) for x, y in curr_coords if x == 0]
-            # if len(right_edge_cells) and len(left__edge_cells):
-            #    curr_backbone_col = min(x for x, _ in curr_coords if x > CENTER_X) 
-
-
-
-            curr_coords = map_to_coords(self.amoeba_map)
-            curr_left_backbone = max(y for x, y in curr_coords if x < CENTER_X) # moving upward
-            curr_right_backbone = min(y for x, y in curr_coords if x > CENTER_X) # moving downward
-
-            left_top_cells = [(x, y) for x, y in curr_coords if x < CENTER_X and y == 0]
-            left_bottom_cells = [(x, y) for x, y in curr_coords if x < CENTER_X and y == constants.map_dim-1]
-            right_top_cells = [(x, y) for x, y in curr_coords if x > CENTER_X and y == 0]
-            right_bottom_cells = [(x, y) for x, y in curr_coords if x > CENTER_X and y == constants.map_dim-1]
-
-            
-            if len(left_top_cells) and len(left_bottom_cells):
-               curr_left_backbone = max(y for x, y in curr_coords if x < CENTER_X) 
-            if len(right_top_cells) and len(right_bottom_cells):
-               curr_right_backbone = min(y for x, y in curr_coords if x > CENTER_X) 
-
-
-            
-            # vertical_shift = int(np.ceil(curr_backbone_col / 2) + 1) % 2
-            if memory_fields[MemoryFields.Translating]:
-                print("Translating")
-                offset = (curr_left_backbone + 1) - CENTER_Y + 1
-                self.vertical_shift += 1
-                info = change_memory_field(info, MemoryFields.Translating, False)
-            else: 
-                print("Not Translating")
-                offset = (curr_left_backbone + 1) - CENTER_Y
-                # self.vertical_shift += 1
-                info = change_memory_field(info, MemoryFields.Translating, True)
-
-            # next_comb = self.generate_comb_formation(self.current_size, vertical_shift, CENTER_X + offset, CENTER_Y)
-            # retracts, moves = self.get_morph_moves(next_comb)
-            print("VERTICAL SHIFT: ", self.vertical_shift)
-            next_comb = self.generate_comb_formation(self.current_size, self.vertical_shift, CENTER_X, CENTER_Y)
-            retracts, moves = self.get_morph_moves(next_comb)
-
-
-        return retracts, moves, info
+                # now it's time to translate
+                center_x = (prev_center_x + 1) % constants.map_dim
+                center_y = constants.map_dim // 2
+                formation = self.gen_low_density_formation(self.current_size, center_x)
+                retracts, moves = self.get_morph_moves(formation)
+                info = encode_byte(center_x, Status.Translating)
+                # if (center_x, center_y) not in retracts:
+                #     #assert False
+                #     print("Morphing to center_x = {}".format(prev_center_x))
+                #     info = encode_byte(prev_center_x, Status.Morphing)
+                #     return retracts, moves, info
+                print("Translating to center_x = {}".format(center_x))
+                return retracts, moves, info
+            else:
+                # still morphing
+                print("Morphing to center_x = {}".format(prev_center_x))
+                info = encode_byte(prev_center_x, Status.Morphing)
+                return retracts, moves, info
+        else:
+            center_x = (prev_center_x + 1) % constants.map_dim
+            center_y = constants.map_dim // 2
+            formation = self.gen_low_density_formation(self.current_size, center_x)
+            retracts, moves = self.get_morph_moves(formation)
+            if center_x not in [x for x, _ in retracts]:
+                #assert False
+                print("Morphing to center_x = {}".format(prev_center_x))
+                info = encode_byte(prev_center_x, Status.Morphing)
+                return retracts, moves, info
+            info = encode_byte(center_x, Status.Translating)
+            print("Translating to center_x = {}".format(center_x))
+            return retracts, moves, info
