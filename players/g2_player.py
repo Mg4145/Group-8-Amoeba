@@ -3,7 +3,7 @@ import pickle
 import numpy as np
 import logging
 from amoeba_state import AmoebaState
-from typing import Tuple, List
+from typing import Tuple, List, Dict
 import numpy.typing as npt
 import constants
 import matplotlib.pyplot as plt
@@ -16,10 +16,10 @@ turn = 0
 #                               Helper Functions                               #
 # ---------------------------------------------------------------------------- #
 
-def map_to_coords(amoeba_map: npt.NDArray) -> list[Tuple[int, int]]:
+def map_to_coords(amoeba_map: npt.NDArray) -> List[Tuple[int, int]]:
      return list(map(tuple, np.transpose(amoeba_map.nonzero()).tolist()))
  
-def coords_to_map(coords: list[tuple[int, int]], size=constants.map_dim) -> npt.NDArray:
+def coords_to_map(coords: List[Tuple[int, int]], size=constants.map_dim) -> npt.NDArray:
     amoeba_map = np.zeros((size, size), dtype=np.int8)
     for x, y in coords:
         amoeba_map[x, y] = 1
@@ -55,7 +55,7 @@ class MemoryFields(Enum):
     Initialized = 0
     Translating = 1
 
-def read_memory(memory: int) -> dict[MemoryFields, bool]:
+def read_memory(memory: int) -> Dict[MemoryFields, bool]:
     out = {}
     for field in MemoryFields:
         value = True if (memory & (1 << field.value)) >> field.value else False

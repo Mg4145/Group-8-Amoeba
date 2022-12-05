@@ -5,6 +5,7 @@ import os
 import sys
 
 import numpy as np
+from typing import Tuple, List, Set
 
 sys.path.append(os.getcwd())
 from amoeba_state import AmoebaState
@@ -14,7 +15,7 @@ from amoeba_state import AmoebaState
 #  Types
 #------------------------------------------------------------------------------
 
-cell = tuple[int, int]
+cell = Tuple[int, int]
 
 
 #------------------------------------------------------------------------------
@@ -25,8 +26,8 @@ def find_movable_neighbor(
     x: int,
     y: int,
     amoeba_map: np.ndarray,
-    bacteria: list[cell]
-) -> list[cell]:
+    bacteria: List[cell]
+) -> List[cell]:
 
     if (x, y) in bacteria:
         return []
@@ -45,12 +46,12 @@ def find_movable_neighbor(
     return out
 
 def find_movable_cells(
-    retract: list[cell],
-    periphery: list[cell],
+    retract: List[cell],
+    periphery: List[cell],
     amoeba_map: np.ndarray,
-    bacteria: list[cell],
+    bacteria: List[cell],
     mini: int
-) -> list[cell]:
+) -> List[cell]:
 
     movable = set()
     new_periphery = list(set(periphery) - set(retract))
@@ -73,7 +74,7 @@ class Strategy(ABC):
     @abstractmethod
     def move(
         self, state: AmoebaState, memory: int
-    ) -> tuple[list[cell], list[cell], int]:
+    ) -> Tuple[List[cell], List[cell], int]:
 
         pass
 
@@ -83,7 +84,7 @@ class RandomWalk(Strategy):
 
     def move(
         self, state: AmoebaState, memory: int
-    ) -> tuple[list[cell], list[cell], int]:
+    ) -> Tuple[List[cell], List[cell], int]:
 
         mini = min(5, len(state.periphery) // 2)
         retract = [
@@ -102,7 +103,7 @@ class RandomWalk(Strategy):
 
 class BucketAttack(Strategy):
 
-    def _get_target_cells(self, size: int, cog: cell, xmax: int) -> list[cell]:
+    def _get_target_cells(self, size: int, cog: cell, xmax: int) -> List[cell]:
         """Returns the cells of the target shape by centering vertically on
         the y-value of Ameoba's center of gravity and placing the bucket arms
         on the column of Ameoba's rightmost cell.
@@ -143,8 +144,8 @@ class BucketAttack(Strategy):
         self,
         curr_state: AmoebaState,
         memory: int,
-        target: set[cell]
-    ) -> tuple[list[cell], list[cell], int]:
+        target: Set[cell]
+    ) -> Tuple[List[cell], List[cell], int]:
         """Computes cells to retract and cells to move onto in a best effort way
         to morphy the ameoba into the target shape.
 
@@ -159,7 +160,7 @@ class BucketAttack(Strategy):
         # 3. find and return the overlap between cells in step 2 and target cells
         #    unoccupied by our Ameoba
         
-        retractable_cells = set(curr_state.periphery) - target
+        retractable_cells = Set(curr_state.periphery) - target
         occupiable_cells = find_movable_cells(
             list(retractable_cells), curr_state.periphery, curr_state.amoeba_map,
             curr_state.bacteria, -1 #mini truncated the list returned #len(retractable_cells)
@@ -175,7 +176,7 @@ class BucketAttack(Strategy):
     def _get_cog(
         self,
         curr_state: AmoebaState,
-    ) -> tuple[int, int]:
+    ) -> Tuple[int, int]:
         """Compute center of gravity of current Ameoba"""
         ameoba_cells = np.array(list(zip(*np.where(curr_state.amoeba_map == 1))))
         cog = (round(np.average(ameoba_cells[:,0])),round(np.average(ameoba_cells[:,1])))
@@ -183,7 +184,7 @@ class BucketAttack(Strategy):
 
     def move(
         self, state: AmoebaState, memory: int
-    ) -> tuple[list[cell], list[cell], int]:
+    ) -> Tuple[List[cell], List[cell], int]:
 
         # TODO: compute ameoba's center of gravity, and xmax
         #size = 9
@@ -237,7 +238,7 @@ class Player:
         last_percept: AmoebaState,
         current_percept: AmoebaState,
         info: int
-    ) -> tuple[list[cell], list[cell], int]:
+    ) -> Tuple[List[cell], List[cell], int]:
         """Computes and returns an amoeba movement given the current state of
         the amoeba map.
 
