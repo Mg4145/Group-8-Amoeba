@@ -1,14 +1,16 @@
+import logging
+import math
 import os
 import pickle
-import numpy as np
-import logging
-from amoeba_state import AmoebaState
-from typing import Tuple, List, Dict
-import numpy.typing as npt
-import constants
-import matplotlib.pyplot as plt
 from enum import Enum
-import math
+from typing import List, Tuple, Dict, Set
+
+import matplotlib.pyplot as plt
+import numpy as np
+import numpy.typing as npt
+
+import constants
+from amoeba_state import AmoebaState
 
 turn = 0
 
@@ -20,8 +22,17 @@ turn = 0
 CENTER_X = constants.map_dim // 2
 CENTER_Y = constants.map_dim // 2
 
-COMB_SEPARATION_DIST = 24
+COMB_SEPARATION_DIST = 4
+TEETH_GAP = 3
 
+VERTICAL_SHIFT_PERIOD = 2
+VERTICAL_SHIFT_LIST = (
+    (
+        [0 for i in range(VERTICAL_SHIFT_PERIOD)]
+        + [1 for i in range(VERTICAL_SHIFT_PERIOD)]
+    )
+    * (round(np.ceil(100 / (VERTICAL_SHIFT_PERIOD * 2))))
+)[:100]
 
 # ---------------------------------------------------------------------------- #
 #                               Helper Functions                               #
@@ -39,7 +50,7 @@ def coords_to_map(coords: List[Tuple[int, int]], size=constants.map_dim) -> npt.
     return amoeba_map
 
 
-def show_amoeba_map(amoeba_map: npt.NDArray, retracts=[], extends=[]) -> None:
+def show_amoeba_map(amoeba_map: npt.NDArray, retracts=[], extends=[], title="") -> None:
     retracts_map = coords_to_map(retracts)
     extends_map = coords_to_map(extends)
 
@@ -58,6 +69,7 @@ def show_amoeba_map(amoeba_map: npt.NDArray, retracts=[], extends=[]) -> None:
     plt.pcolormesh(map, edgecolors="k", linewidth=1)
     ax = plt.gca()
     ax.set_aspect("equal")
+    plt.title(title)
     # plt.savefig(f"debug/{turn}.png")
     plt.show()
 
@@ -114,26 +126,33 @@ if __name__ == "__main__":
     assert fields[MemoryFields.Translating] == False
 
 
-
 # ---------------------------------------------------------------------------- #
 #                               Formation Class                                #
 # ---------------------------------------------------------------------------- #
 
-class Formation:        
+
+class Formation:
     def __init__(self, initial_formation=None) -> None:
-        self.map = initial_formation if initial_formation else np.zeros((constants.map_dim, constants.map_dim), dtype=np.int8)
-    
-    def add_cell(self, x, y):
+        self.map = (
+            initial_formation
+            if initial_formation
+            else np.zeros((constants.map_dim, constants.map_dim), dtype=np.int8)
+        )
+
+    def add_cell(self, x, y) -> None:
         self.map[x % constants.map_dim, y % constants.map_dim] = 1
-    
+        
+    def get_cell(self, x, y) -> int:
+        return self.map[x % constants.map_dim, y % constants.map_dim]
+
     def merge_formation(self, formation_map: npt.NDArray):
         self.map = np.logical_or(self.map, formation_map)
-
 
 
 # ---------------------------------------------------------------------------- #
 #                               Main Player Class                              #
 # ---------------------------------------------------------------------------- #
+
 
 class Player:
     def __init__(
@@ -179,12 +198,14 @@ class Player:
         # Class accessible percept variables, written at the start of each turn
         self.current_size: int = None
         self.amoeba_map: npt.NDArray = None
-        self.bacteria_cells: List[Tuple[int, int]] = None
+        self.bacteria_cells: Set[Tuple[int, int]] = None
         self.retractable_cells: List[Tuple[int, int]] = None
         self.extendable_cells: List[Tuple[int, int]] = None
         self.num_available_moves: int = None
-        
-    def generate_comb_formation(self, size: int, tooth_offset=0, center_x=CENTER_X, center_y=CENTER_Y) -> npt.NDArray:
+
+    def generate_comb_formation(
+        self, size: int, tooth_offset=0, center_x=CENTER_X, center_y=CENTER_Y, comb_idx=0
+    ) -> npt.NDArray:
         formation = Formation()
         
         if size < 2:
@@ -205,7 +226,7 @@ class Player:
         # backbone_size = min((size - teeth_size - divider), 99)
 
         remaining_cells = size - teeth_size
-        divider = min((int(remaining_cells * 0.66)), 99)
+        divider = min((int(remaining_cells * 0.66)), 100)
         # backbone_size = min((size - teeth_size - divider), 99)
         backbone_size = (size - teeth_size - divider)
 
@@ -239,33 +260,81 @@ class Player:
         #     # formation.add_cell(center_x, center_y + i)
 
         if backbone_size > 96: # 48 long backbone for each side
-            backbones = backbone_size // 96 # number of 48-long backbones each side has
-            excess = backbone_size % 96
 
-            for b in range(1, backbones + 1):
-                for i in range(1, 49): # Adding the two backbones
-                    formation.add_cell(center_x - i, center_y - tooth_offset + (b-1))
-                for i in range(1, 49): # Adding the two backbones
-                    formation.add_cell(center_x + i, center_y + tooth_offset - (b-1))
+            # Make the main backbone
+            for i in range(1, 49): # Adding the two backbones
+                formation.add_cell(center_x - i, center_y - tooth_offset)
+            for i in range(1, 49): # Adding the two backbones
+                formation.add_cell(center_x + i, center_y + tooth_offset)
+            backbone_size -= 96
 
-            if (excess > 0):
-                # Add excess (first check if more teeth can be added)
-                need_teeth = 48 - teeth_size
-                if (need_teeth) > 0:
-                    if excess <= need_teeth:
-                        teeth_size += excess
-                        excess = 0
-                    else:
-                        teeth_size += excess
-                        excess -= need_teeth
+            # Make second backbones
+            if backbone_size > 120:
+                # this is excess
+                for i in range(1, 49): # Adding the second backbones
+                    formation.add_cell(center_x - i, center_y - tooth_offset + 49)
+                for i in range(1, 49): # Adding the second backbones
+                    formation.add_cell(center_x + i, center_y + tooth_offset - 49)
+                # Add the teeth
+                for i in range(1, 25): # Adding the right teeth
+                    formation.add_cell(center_x - 2 * i, center_y - 1 - tooth_offset + 49)
+                for i in range(1, 25): # Adding the left teeth
+                    formation.add_cell(center_x + 2 * i, center_y + 1 + tooth_offset - 49)
 
-                left = excess // 2
-                right = excess - left
+                backbone_size -= 120
 
-                for i in range(1, left + 1): # Adding the two backbones
-                    formation.add_cell(center_x - i, center_y - tooth_offset + (backbones))
-                for i in range(1, right + 1): # Adding the two backbones
-                    formation.add_cell(center_x + i, center_y + tooth_offset - (backbones))
+                # Adds excess to first backbones
+                backbones = backbone_size // 96 # number of 48-long backbones each side has
+                excess = backbone_size % 96
+
+                # Adds excess to original backbone
+                for b in range(2, backbones + 1):
+                    for i in range(1, 49): # Adding the two backbones
+                        formation.add_cell(center_x - i, center_y - tooth_offset + (b-1))
+                    for i in range(1, 49): # Adding the two backbones
+                        formation.add_cell(center_x + i, center_y + tooth_offset - (b-1))
+
+                if (excess > 0):
+                    # Add excess (first check if more teeth can be added)
+                    need_teeth = 48 - teeth_size
+                    if (need_teeth) > 0:
+                        if excess <= need_teeth:
+                            teeth_size += excess
+                            excess = 0
+                        else:
+                            teeth_size += excess
+                            excess -= need_teeth
+
+
+                    left = excess // 2
+                    right = excess - left
+
+                    for i in range(1, left + 1): # Adding the two backbones
+                        formation.add_cell(center_x - i, center_y - tooth_offset + (backbones))
+                    for i in range(1, right + 1): # Adding the two backbones
+                        formation.add_cell(center_x + i, center_y + tooth_offset - (backbones))
+
+            else:
+                new_teeth = backbone_size // 3
+                new_backbone = backbone_size - new_teeth
+
+                for i in range(1, new_backbone+1): # Adding the second backbones
+                    formation.add_cell(center_x - i, center_y - tooth_offset + 49)
+                for i in range(1, new_backbone+1): # Adding the second backbones
+                    formation.add_cell(center_x + i, center_y + tooth_offset - 49)
+                # Add the teeth
+                for i in range(1, new_teeth+1): # Adding the right teeth
+                    formation.add_cell(center_x - 2 * i, center_y - 1 - tooth_offset + 49)
+                for i in range(1, new_teeth+1): # Adding the left teeth
+                    formation.add_cell(center_x + 2 * i, center_y + 1 + tooth_offset - 49)
+
+                backbone_size -= new_teeth
+                backbone_size -= new_backbone
+                
+
+
+
+            
 
         else:
             left = backbone_size // 2
@@ -277,6 +346,7 @@ class Player:
                 formation.add_cell(center_x + i, center_y + tooth_offset)
 
 
+        # Add the teeth
         left_teeth = teeth_size // 2
         right_teeth = teeth_size - left_teeth
 
@@ -286,17 +356,11 @@ class Player:
             formation.add_cell(center_x + 2 * i, center_y + 1 + tooth_offset)
             
 
-
-        # for i in range(1, (teeth_size // 2) + 1): # Adding the teeth
-        #     # formation.add_cell(center_x + (2 * i + tooth_offset), center_y + 1)
-        #     # formation.add_cell(center_x - (2 * i + tooth_offset), center_y - 1)
-        #     formation.add_cell(center_x + 2 * i, center_y + 1 + tooth_offset)
-        #     formation.add_cell(center_x - 2 * i, center_y - 1 - tooth_offset)
-
         # global turn
-        # if turn > 80:
+        # if turn > 114:
         #     show_amoeba_map(formation.map)
         return formation.map
+
 
     def get_morph_moves(
         self, desired_amoeba: npt.NDArray
@@ -326,6 +390,7 @@ class Player:
         # Loop through potential extends, searching for a matching retract
         retracts = []
         extends = []
+        check_calls = 0
         for potential_extend in [p for p in potential_extends]:
             # Ensure we only move as much as possible given our current metabolism
             if len(extends) >= self.num_available_moves:
@@ -338,11 +403,14 @@ class Player:
                 retract = matching_retracts[i]
                 # Matching retract found, add the extend and retract to our lists
                 if self.check_move(retracts + [retract], extends + [potential_extend]):
+                    check_calls += 1
                     retracts.append(retract)
                     potential_retracts.remove(retract)
                     extends.append(potential_extend)
                     potential_extends.remove(potential_extend)
                     break
+                check_calls += 1
+        # print(f"Check calls: {check_calls} / {self.current_size}")
 
         # If we have moves remaining, try and get closer to the desired formation
         # if len(extends) < self.num_available_moves and len(potential_retracts):
@@ -381,7 +449,7 @@ class Player:
         return movable[:mini]
 
     def find_movable_neighbor(
-        self, x: int, y: int, amoeba_map: npt.NDArray, bacteria: List[Tuple[int, int]]
+        self, x: int, y: int, amoeba_map: npt.NDArray, bacteria: Set[Tuple[int, int]]
     ) -> List[Tuple[int, int]]:
         out = []
         if (x, y) not in bacteria:
@@ -402,15 +470,15 @@ class Player:
         if not set(retracts).issubset(set(self.retractable_cells)):
             return False
 
-        movable = retracts[:]
+        movable = set(retracts[:])
         new_periphery = list(set(self.retractable_cells).difference(set(retracts)))
         for i, j in new_periphery:
             nbr = self.find_movable_neighbor(i, j, self.amoeba_map, self.bacteria_cells)
             for x, y in nbr:
                 if (x, y) not in movable:
-                    movable.append((x, y))
+                    movable.add((x, y))
 
-        if not set(extends).issubset(set(movable)):
+        if not set(extends).issubset(movable):
             return False
 
         amoeba = np.copy(self.amoeba_map)
@@ -428,6 +496,7 @@ class Player:
         check = np.zeros((constants.map_dim, constants.map_dim), dtype=int)
 
         stack = result[0:1]
+        result = set(result)
         while len(stack):
             a, b = stack.pop()
             check[a][b] = 1
@@ -455,7 +524,7 @@ class Player:
         self.current_size = current_percept.current_size
         self.amoeba_map = current_percept.amoeba_map
         self.retractable_cells = current_percept.periphery
-        self.bacteria_cells = current_percept.bacteria
+        self.bacteria_cells = set(current_percept.bacteria)
         self.extendable_cells = current_percept.movable_cells
         self.num_available_moves = int(
             np.ceil(self.metabolism * current_percept.current_size)
@@ -478,16 +547,8 @@ class Player:
         global turn
         turn += 1
 
-        if turn == 1:
-            print("Turn #{}".format(turn))
-            a = len(last_percept.bacteria)
-            b = len(last_percept.periphery)
-
-            print("Est. Density: ", (a/b))
-
-
         self.store_current_percept(current_percept)
-
+        
         retracts = []
         moves = []
 
@@ -498,7 +559,7 @@ class Player:
             )
             if len(moves) == 0:
                 info = change_memory_field(info, MemoryFields.Initialized, True)
-                info = change_memory_field(info, MemoryFields.Translating, True)
+                info = (50 << 1) | info
                 memory_fields = read_memory(info)
 
         if memory_fields[MemoryFields.Initialized]:
@@ -530,6 +591,5 @@ class Player:
                 )
                 retracts, moves = self.get_morph_moves(next_comb)
                 # info = new_backbone_col << 1 | 1
-
 
         return retracts, moves, info
