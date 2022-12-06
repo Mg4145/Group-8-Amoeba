@@ -390,6 +390,12 @@ class Player:
         formation = np.zeros((constants.map_dim, constants.map_dim), dtype=int)
         offsets = {(0,0), (0,1), (0,-1), (1,1), (1,-1)}
         total_cells = size - 5
+        # if total_cells > 12:
+        #     total_cells -= 12
+        #     form_claws = True
+        form_claws = True
+        num_claw_cells = int(total_cells * 0.1) // 4 * 4
+        total_cells -= num_claw_cells
         i = 1
         j = 2
         while total_cells > 0:
@@ -409,8 +415,21 @@ class Player:
                 total_cells -= 6
                 i += 2
                 j += 1
+        # print("Final pair ", i, j)
+        if form_claws:
+            # print("CLAWS!")
+            # for t in range(1, 7):
+            #     offsets.update({(i, j-t), (i, -j+t)})
+            for t in range(num_claw_cells // 4):
+                offsets.update({(i+t, j-t-1), (i+t+1, j-t-1)})
+                offsets.update({(i+t, -j+t+1), (i+t+1, -j+t+1)})
+                #offsets.update({(i+t, j+2), (i+t, -j-2)})
+            
         for i, j in offsets:
             formation[wrap_coordinates(center_x + i, center_y + j)] = 1
+        # plt.clf()
+        # plt.imshow(formation)
+        # plt.show()
         return formation
 
     def store_current_percept(self, current_percept: AmoebaState) -> None:
@@ -446,8 +465,12 @@ class Player:
         moves = []
 
         x, status = decode_byte(info)
-        prev_center_x = max(constants.map_dim // 2, x)
-
+        if turn == 1:
+            prev_center_x = constants.map_dim // 2
+        else:
+            prev_center_x = x
+        # print("PREV CENTER X: {}".format(prev_center_x))
+        # print("NEXT CENTER X: {}".format((prev_center_x + 1) % constants.map_dim))
         if status == Status.Morphing:
             formation = self.gen_low_density_formation(self.current_size, prev_center_x)
             retracts, moves = self.get_morph_moves(formation)
@@ -480,6 +503,7 @@ class Player:
                 print("Morphing to center_x = {}".format(prev_center_x))
                 info = encode_byte(prev_center_x, Status.Morphing)
                 return retracts, moves, info
-            info = encode_byte(center_x, Status.Translating)
-            print("Translating to center_x = {}".format(center_x))
-            return retracts, moves, info
+            else:
+                info = encode_byte(center_x, Status.Translating)
+                print("Translating to center_x = {}".format(center_x))
+                return retracts, moves, info
