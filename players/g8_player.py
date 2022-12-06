@@ -503,67 +503,33 @@ class Player:
 
         if memory_fields[MemoryFields.Initialized]:
             print("MOVING")
-            # curr_coords = map_to_coords(self.amoeba_map)
-            # curr_backbone_col = min(x for x, y in curr_coords if y == max(y for x, y in curr_coords))
-            
-            # right_edge_cells = [(x, y) for x, y in curr_coords if x == constants.map_dim - 1]
-            # left__edge_cells = [(x, y) for x, y in curr_coords if x == 0]
-            # if len(right_edge_cells) and len(left__edge_cells):
-            #    curr_backbone_col = min(x for x, _ in curr_coords if x > CENTER_X) 
+            # Extract backbone column from memory
+            # curr_backbone_col = info >> 1
+            # vertical_shift = VERTICAL_SHIFT_LIST[curr_backbone_col]
+            next_comb = self.generate_comb_formation(
+                self.current_size, self.vertical_shift, CENTER_X, CENTER_Y
+            )
+            # Check if current comb formation is filled
+            settled = self.amoeba_map[next_comb].all()
+            if not settled:
+                retracts, moves = self.get_morph_moves(next_comb)
+               
+                # Actually, we have no more moves to make 
+                if len(moves) == 0:
+                   settled = True
 
-            # NOT CONVINCED ********************************************************************************
-            # curr_coords = map_to_coords(self.amoeba_map)
-
-            # try:
-            #     curr_left_backbone = max(y for x, y in curr_coords if x < CENTER_X) # moving upward
-            #     curr_right_backbone = min(y for x, y in curr_coords if x > CENTER_X) # moving downward
-            # except Exception as e:
-            #     print(e)
-            #     curr_left_backbone = 0
-            #     curr_right_backbone = 0
-            
-            # try:
-            #     # left/right borders
-            #     curr_left_side = min(x for x, y in curr_coords if x < CENTER_X) # moving upward
-            #     curr_right_side = max(x for x, y in curr_coords if x > CENTER_X) # moving downward
-            # except Exception as e:
-            #     print(e)
-            #     curr_left_side = CENTER_X
-            #     curr_right_side = CENTER_X
-
-            # comb_done = (curr_left_side == 0 or curr_right_side == constants.map_dim-1)
-
-
-            # left_top_cells = [(x, y) for x, y in curr_coords if x < CENTER_X and y == 0]
-            # left_bottom_cells = [(x, y) for x, y in curr_coords if x < CENTER_X and y == constants.map_dim-1]
-            # right_top_cells = [(x, y) for x, y in curr_coords if x > CENTER_X and y == 0]
-            # right_bottom_cells = [(x, y) for x, y in curr_coords if x > CENTER_X and y == constants.map_dim-1]
-
-            
-            # if len(left_top_cells) and len(left_bottom_cells):
-            #    curr_left_backbone = max(y for x, y in curr_coords if x < CENTER_X) 
-            # if len(right_top_cells) and len(right_bottom_cells):
-            #    curr_right_backbone = min(y for x, y in curr_coords if x > CENTER_X) 
-
-
-            
-            # vertical_shift = int(np.ceil(curr_backbone_col / 2) + 1) % 2
-            if memory_fields[MemoryFields.Translating]:
-                print("Translating")
-                # offset = (curr_left_backbone + 1) - CENTER_Y + 1
+            if settled:
+                # When we "settle" into the target backbone column, advance the backbone column by 1
+                # prev_backbone_col = curr_backbone_col
+                # new_backbone_col = (prev_backbone_col + 1) % 100
+                # vertical_shift = VERTICAL_SHIFT_LIST[new_backbone_col]
                 self.vertical_shift += 1
-                info = change_memory_field(info, MemoryFields.Translating, False)
-            else: 
-                print("Not Translating")
-                # offset = (curr_left_backbone + 1) - CENTER_Y
-                # self.vertical_shift += 1
-                info = change_memory_field(info, MemoryFields.Translating, True)
 
-            # next_comb = self.generate_comb_formation(self.current_size, vertical_shift, CENTER_X + offset, CENTER_Y)
-            # retracts, moves = self.get_morph_moves(next_comb)
-            print("VERTICAL SHIFT: ", self.vertical_shift)
-            next_comb = self.generate_comb_formation(self.current_size, self.vertical_shift, CENTER_X, CENTER_Y)
-            retracts, moves = self.get_morph_moves(next_comb)
+                next_comb = self.generate_comb_formation(
+                    self.current_size, self.vertical_shift, CENTER_X, CENTER_Y
+                )
+                retracts, moves = self.get_morph_moves(next_comb)
+                # info = new_backbone_col << 1 | 1
 
 
         return retracts, moves, info
