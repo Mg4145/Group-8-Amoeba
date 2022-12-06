@@ -191,6 +191,7 @@ class Player:
             return formation.map
 
         teeth_size = min((size // 6), 48) # new tooth for every 2 backbone
+        # teeth_size = min((size // 6), 24) # new tooth for every 2 backbone
         # remaining_cells = size - teeth_size
         # divider = min((int(remaining_cells * 0.66)), 99)
         # backbone_size = min((size - teeth_size - divider), 49)
@@ -205,14 +206,11 @@ class Player:
 
         remaining_cells = size - teeth_size
         divider = min((int(remaining_cells * 0.66)), 99)
-        backbone_size = min((size - teeth_size - divider), 99)
+        # backbone_size = min((size - teeth_size - divider), 99)
+        backbone_size = (size - teeth_size - divider)
 
-        if divider == 99:
-            remaining_cells = size - divider
-            teeth_size == remaining_cells // 3
-            backbone_size = remaining_cells - teeth_size
         
-        cells_used = backbone_size + teeth_size
+        teeth_size = min(teeth_size, backbone_size // 2)
         
         # If we have hit our max size, form an additional comb and connect it via a bridge
         # if backbone_size == 99:
@@ -234,20 +232,69 @@ class Player:
             formation.add_cell(center_x, center_y - i)
             formation.add_cell(center_x, center_y + i)
         
-        for i in range(1, math.ceil((backbone_size - 1) / 2 ) + 1): # Adding the two backbones
-            formation.add_cell(center_x - i, center_y - tooth_offset)
-            formation.add_cell(center_x + i, center_y + tooth_offset)
-            # formation.add_cell(center_x, center_y - i)
-            # formation.add_cell(center_x, center_y + i)
+        # for i in range(1, math.ceil((backbone_size - 1) / 2 ) + 1): # Adding the two backbones
+        #     formation.add_cell(center_x - i, center_y - tooth_offset)
+        #     formation.add_cell(center_x + i, center_y + tooth_offset)
+        #     # formation.add_cell(center_x, center_y - i)
+        #     # formation.add_cell(center_x, center_y + i)
 
-        for i in range(1, (teeth_size // 2) + 1): # Adding the teeth
-            # formation.add_cell(center_x + (2 * i + tooth_offset), center_y + 1)
-            # formation.add_cell(center_x - (2 * i + tooth_offset), center_y - 1)
-            formation.add_cell(center_x + 2 * i, center_y + 1 + tooth_offset)
+        if backbone_size > 96: # 48 long backbone for each side
+            backbones = backbone_size // 96 # number of 48-long backbones each side has
+            excess = backbone_size % 96
+
+            for b in range(1, backbones + 1):
+                for i in range(1, 49): # Adding the two backbones
+                    formation.add_cell(center_x - i, center_y - tooth_offset + (b-1))
+                for i in range(1, 49): # Adding the two backbones
+                    formation.add_cell(center_x + i, center_y + tooth_offset - (b-1))
+
+            if (excess > 0):
+                # Add excess (first check if more teeth can be added)
+                need_teeth = 48 - teeth_size
+                if (need_teeth) > 0:
+                    if excess <= need_teeth:
+                        teeth_size += excess
+                        excess = 0
+                    else:
+                        teeth_size += excess
+                        excess -= need_teeth
+
+                left = excess // 2
+                right = excess - left
+
+                for i in range(1, left + 1): # Adding the two backbones
+                    formation.add_cell(center_x - i, center_y - tooth_offset + (backbones))
+                for i in range(1, right + 1): # Adding the two backbones
+                    formation.add_cell(center_x + i, center_y + tooth_offset - (backbones))
+
+        else:
+            left = backbone_size // 2
+            right = backbone_size - left
+
+            for i in range(1, left + 1): # Adding the two backbones
+                formation.add_cell(center_x - i, center_y - tooth_offset)
+            for i in range(1, right + 1): # Adding the two backbones
+                formation.add_cell(center_x + i, center_y + tooth_offset)
+
+
+        left_teeth = teeth_size // 2
+        right_teeth = teeth_size - left_teeth
+
+        for i in range(1, left_teeth + 1): # Adding the right teeth
             formation.add_cell(center_x - 2 * i, center_y - 1 - tooth_offset)
+        for i in range(1, right_teeth + 1): # Adding the left teeth
+            formation.add_cell(center_x + 2 * i, center_y + 1 + tooth_offset)
+            
+
+
+        # for i in range(1, (teeth_size // 2) + 1): # Adding the teeth
+        #     # formation.add_cell(center_x + (2 * i + tooth_offset), center_y + 1)
+        #     # formation.add_cell(center_x - (2 * i + tooth_offset), center_y - 1)
+        #     formation.add_cell(center_x + 2 * i, center_y + 1 + tooth_offset)
+        #     formation.add_cell(center_x - 2 * i, center_y - 1 - tooth_offset)
 
         # global turn
-        # if turn > 79:
+        # if turn > 80:
         #     show_amoeba_map(formation.map)
         return formation.map
 
@@ -464,40 +511,51 @@ class Player:
             # if len(right_edge_cells) and len(left__edge_cells):
             #    curr_backbone_col = min(x for x, _ in curr_coords if x > CENTER_X) 
 
+            # NOT CONVINCED ********************************************************************************
+            # curr_coords = map_to_coords(self.amoeba_map)
+
+            # try:
+            #     curr_left_backbone = max(y for x, y in curr_coords if x < CENTER_X) # moving upward
+            #     curr_right_backbone = min(y for x, y in curr_coords if x > CENTER_X) # moving downward
+            # except Exception as e:
+            #     print(e)
+            #     curr_left_backbone = 0
+            #     curr_right_backbone = 0
             
-            curr_coords = map_to_coords(self.amoeba_map)
+            # try:
+            #     # left/right borders
+            #     curr_left_side = min(x for x, y in curr_coords if x < CENTER_X) # moving upward
+            #     curr_right_side = max(x for x, y in curr_coords if x > CENTER_X) # moving downward
+            # except Exception as e:
+            #     print(e)
+            #     curr_left_side = CENTER_X
+            #     curr_right_side = CENTER_X
 
-            try:
-                curr_left_backbone = max(y for x, y in curr_coords if x < CENTER_X) # moving upward
-                curr_right_backbone = min(y for x, y in curr_coords if x > CENTER_X) # moving downward
-            except Exception as e:
-                print(e)
-                curr_left_backbone = 0
-                curr_right_backbone = 0
+            # comb_done = (curr_left_side == 0 or curr_right_side == constants.map_dim-1)
 
 
-            left_top_cells = [(x, y) for x, y in curr_coords if x < CENTER_X and y == 0]
-            left_bottom_cells = [(x, y) for x, y in curr_coords if x < CENTER_X and y == constants.map_dim-1]
-            right_top_cells = [(x, y) for x, y in curr_coords if x > CENTER_X and y == 0]
-            right_bottom_cells = [(x, y) for x, y in curr_coords if x > CENTER_X and y == constants.map_dim-1]
+            # left_top_cells = [(x, y) for x, y in curr_coords if x < CENTER_X and y == 0]
+            # left_bottom_cells = [(x, y) for x, y in curr_coords if x < CENTER_X and y == constants.map_dim-1]
+            # right_top_cells = [(x, y) for x, y in curr_coords if x > CENTER_X and y == 0]
+            # right_bottom_cells = [(x, y) for x, y in curr_coords if x > CENTER_X and y == constants.map_dim-1]
 
             
-            if len(left_top_cells) and len(left_bottom_cells):
-               curr_left_backbone = max(y for x, y in curr_coords if x < CENTER_X) 
-            if len(right_top_cells) and len(right_bottom_cells):
-               curr_right_backbone = min(y for x, y in curr_coords if x > CENTER_X) 
+            # if len(left_top_cells) and len(left_bottom_cells):
+            #    curr_left_backbone = max(y for x, y in curr_coords if x < CENTER_X) 
+            # if len(right_top_cells) and len(right_bottom_cells):
+            #    curr_right_backbone = min(y for x, y in curr_coords if x > CENTER_X) 
 
 
             
             # vertical_shift = int(np.ceil(curr_backbone_col / 2) + 1) % 2
             if memory_fields[MemoryFields.Translating]:
                 print("Translating")
-                offset = (curr_left_backbone + 1) - CENTER_Y + 1
+                # offset = (curr_left_backbone + 1) - CENTER_Y + 1
                 self.vertical_shift += 1
                 info = change_memory_field(info, MemoryFields.Translating, False)
             else: 
                 print("Not Translating")
-                offset = (curr_left_backbone + 1) - CENTER_Y
+                # offset = (curr_left_backbone + 1) - CENTER_Y
                 # self.vertical_shift += 1
                 info = change_memory_field(info, MemoryFields.Translating, True)
 
