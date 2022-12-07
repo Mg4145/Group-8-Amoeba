@@ -216,6 +216,7 @@ class Player:
         self.current_size = goal_size / 4
 
         self.vertical_shift = 0
+        self.method = 0 # Determines which strategy to use: 0 -> double comb, 1 -> V-shape for low density
 
         # Class accessible percept variables, written at the start of each turn
         self.current_size: int = None
@@ -582,97 +583,103 @@ class Player:
 
         # Two different implementations based on density and side length
 
+        if self.method == 0: # Double comb for higher density/larger side length
 
-        memory_fields = read_memory(info)
-        if not memory_fields[MemoryFields.Initialized]:
-            retracts, moves = self.get_morph_moves(
-                self.generate_comb_formation(self.current_size, 0)
-            )
-            if len(moves) == 0:
-                info = change_memory_field(info, MemoryFields.Initialized, True)
-                info = (50 << 1) | info
-                memory_fields = read_memory(info)
-
-        if memory_fields[MemoryFields.Initialized]:
-            print("MOVING: Vertical shift: ", self.vertical_shift)
-            try:
-                curr_coords = map_to_coords(self.amoeba_map)
-                top_divider = min(y for x, y in curr_coords if x == CENTER_X) # moving upward
-                bottom_divider = max(y for x, y in curr_coords if x == CENTER_X) # moving downward
-            except Exception as e:
-                print(e)
-                top_divider = 0
-                bottom_divider = 0
-            print("Height of divider: ", bottom_divider-top_divider)
-
-
-            next_comb = self.generate_comb_formation(
-                self.current_size, self.vertical_shift, CENTER_X, CENTER_Y
-            )
-            # Check if current comb formation is filled
-            settled = self.amoeba_map[next_comb].all()
-            if not settled:
-                retracts, moves = self.get_morph_moves(next_comb)
-               
-                # Actually, we have no more moves to make 
+            memory_fields = read_memory(info)
+            if not memory_fields[MemoryFields.Initialized]:
+                retracts, moves = self.get_morph_moves(
+                    self.generate_comb_formation(self.current_size, 0)
+                )
                 if len(moves) == 0:
-                   settled = True
+                    info = change_memory_field(info, MemoryFields.Initialized, True)
+                    info = (50 << 1) | info
+                    memory_fields = read_memory(info)
 
-            if settled:
-                self.vertical_shift += 1
+            if memory_fields[MemoryFields.Initialized]:
+                print("Vertical shift: ", self.vertical_shift)
+                try:
+                    curr_coords = map_to_coords(self.amoeba_map)
+                    top_divider = min(y for x, y in curr_coords if x == CENTER_X) # moving upward
+                    bottom_divider = max(y for x, y in curr_coords if x == CENTER_X) # moving downward
+                except Exception as e:
+                    print(e)
+                    self.method = 1
+                    return None
+                print("Height: ", bottom_divider - top_divider)
+                real_height = bottom_divider - top_divider
+                if (real_height < 98) and ( (real_height // 2) < (self.vertical_shift-5) ): # Has shifted more than divider, so converts to V-shape
+                    self.method = 1
+                    return None
+
 
                 next_comb = self.generate_comb_formation(
                     self.current_size, self.vertical_shift, CENTER_X, CENTER_Y
                 )
-                retracts, moves = self.get_morph_moves(next_comb)
-                # info = new_backbone_col << 1 | 1
+                # Check if current comb formation is filled
+                settled = self.amoeba_map[next_comb].all()
+                if not settled:
+                    retracts, moves = self.get_morph_moves(next_comb)
+                
+                    # Actually, we have no more moves to make 
+                    if len(moves) == 0:
+                        settled = True
 
-        return retracts, moves, info
+                if settled:
+                    self.vertical_shift += 1
+
+                    next_comb = self.generate_comb_formation(
+                        self.current_size, self.vertical_shift, CENTER_X, CENTER_Y
+                    )
+                    retracts, moves = self.get_morph_moves(next_comb)
+                    # info = new_backbone_col << 1 | 1
+
+            return retracts, moves, info
 
 
         # ****************************************** SEPARATION ********************************************************
 
+        else: # 1 = V-shape lower density strategy
 
-        # x, status = decode_byte(info)
-        # if turn == 1:
-        #     prev_center_x = constants.map_dim // 2
-        # else:
-        #     prev_center_x = x
-        # # print("PREV CENTER X: {}".format(prev_center_x))
-        # # print("NEXT CENTER X: {}".format((prev_center_x + 1) % constants.map_dim))
-        # if status == Status.Morphing:
-        #     formation = self.gen_low_density_formation(self.current_size, prev_center_x)
-        #     retracts, moves = self.get_morph_moves(formation)
-        #     if len(moves) == 0:
-        #         # now it's time to translate
-        #         center_x = (prev_center_x + 1) % constants.map_dim
-        #         center_y = constants.map_dim // 2
-        #         formation = self.gen_low_density_formation(self.current_size, center_x)
-        #         retracts, moves = self.get_morph_moves(formation)
-        #         info = encode_byte(center_x, Status.Translating)
-        #         # if (center_x, center_y) not in retracts:
-        #         #     #assert False
-        #         #     print("Morphing to center_x = {}".format(prev_center_x))
-        #         #     info = encode_byte(prev_center_x, Status.Morphing)
-        #         #     return retracts, moves, info
-        #         print("Translating to center_x = {}".format(center_x))
-        #         return retracts, moves, info
-        #     else:
-        #         # still morphing
-        #         print("Morphing to center_x = {}".format(prev_center_x))
-        #         info = encode_byte(prev_center_x, Status.Morphing)
-        #         return retracts, moves, info
-        # else:
-        #     center_x = (prev_center_x + 1) % constants.map_dim
-        #     center_y = constants.map_dim // 2
-        #     formation = self.gen_low_density_formation(self.current_size, center_x)
-        #     retracts, moves = self.get_morph_moves(formation)
-        #     if center_x not in [x for x, _ in retracts]:
-        #         #assert False
-        #         print("Morphing to center_x = {}".format(prev_center_x))
-        #         info = encode_byte(prev_center_x, Status.Morphing)
-        #         return retracts, moves, info
-        #     else:
-        #         info = encode_byte(center_x, Status.Translating)
-        #         print("Translating to center_x = {}".format(center_x))
-        #         return retracts, moves, info
+            x, status = decode_byte(info)
+            if turn == 1:
+                prev_center_x = constants.map_dim // 2
+            else:
+                prev_center_x = x
+            # print("PREV CENTER X: {}".format(prev_center_x))
+            # print("NEXT CENTER X: {}".format((prev_center_x + 1) % constants.map_dim))
+            if status == Status.Morphing:
+                formation = self.gen_low_density_formation(self.current_size, prev_center_x)
+                retracts, moves = self.get_morph_moves(formation)
+                if len(moves) == 0:
+                    # now it's time to translate
+                    center_x = (prev_center_x + 1) % constants.map_dim
+                    center_y = constants.map_dim // 2
+                    formation = self.gen_low_density_formation(self.current_size, center_x)
+                    retracts, moves = self.get_morph_moves(formation)
+                    info = encode_byte(center_x, Status.Translating)
+                    # if (center_x, center_y) not in retracts:
+                    #     #assert False
+                    #     print("Morphing to center_x = {}".format(prev_center_x))
+                    #     info = encode_byte(prev_center_x, Status.Morphing)
+                    #     return retracts, moves, info
+                    print("Translating to center_x = {}".format(center_x))
+                    return retracts, moves, info
+                else:
+                    # still morphing
+                    print("Morphing to center_x = {}".format(prev_center_x))
+                    info = encode_byte(prev_center_x, Status.Morphing)
+                    return retracts, moves, info
+            else:
+                center_x = (prev_center_x + 1) % constants.map_dim
+                center_y = constants.map_dim // 2
+                formation = self.gen_low_density_formation(self.current_size, center_x)
+                retracts, moves = self.get_morph_moves(formation)
+                if center_x not in [x for x, _ in retracts]:
+                    #assert False
+                    print("Morphing to center_x = {}".format(prev_center_x))
+                    info = encode_byte(prev_center_x, Status.Morphing)
+                    return retracts, moves, info
+                else:
+                    info = encode_byte(center_x, Status.Translating)
+                    print("Translating to center_x = {}".format(center_x))
+                    return retracts, moves, info
